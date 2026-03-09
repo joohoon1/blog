@@ -1,0 +1,14 @@
+{
+  "name": "private-blog",
+  "version": "1.0.0",
+  "description": "Private markdown blog",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "gray-matter": "^4.0.3"
+  }
+}

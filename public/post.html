@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Loading… — Joohoon's Reflections</title>
+  <link rel="stylesheet" href="style.css">
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+</head>
+<body>
+  <div class="container">
+    <a href="index.html" class="back-link">← All posts</a>
+    <main id="main">
+      <p style="color:var(--text-muted)">Loading…</p>
+    </main>
+  </div>
+
+  <div class="toast" id="toast"></div>
+
+  <script>
+    const slug = new URLSearchParams(location.search).get('slug');
+
+    marked.setOptions({
+      breaks: true,
+      gfm: true,
+    });
+
+    function formatDate(iso) {
+      return new Date(iso).toLocaleDateString('en-US', {
+        year: 'numeric', month: 'long', day: 'numeric'
+      });
+    }
+
+    function escapeHtml(str) {
+      return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+    }
+
+    function renderTags(tags) {
+      if (!tags || !tags.trim()) return '';
+      return `<div class="tags">${tags.split(',').map(t => `<span class="tag">${t.trim()}</span>`).join('')}</div>`;
+    }
+
+    async function loadPost() {
+      if (!slug) {
+        document.getElementById('main').innerHTML = '<p style="color:var(--danger)">No post specified.</p>';
+        return;
+      }
+
+      try {
+        const res = await fetch(`/api/posts/${encodeURIComponent(slug)}`);
+        if (!res.ok) {
+          const { error } = await res.json();
+          document.getElementById('main').innerHTML = `<p style="color:var(--danger)">${escapeHtml(error)}</p>`;
+          return;
+        }
+        const post = await res.json();
+        document.title = `${post.title} — Joohoon's Reflections`;
+
+        const metaParts = [formatDate(post.date)];
+        if (post.updated) metaParts.push(`edited ${formatDate(post.updated)}`);
+
+        document.getElementById('main').innerHTML = `
+          <article>
+            <header class="post-header">
+              <h1>${escapeHtml(post.title)}</h1>
+              <div class="post-header-meta">${metaParts.map(escapeHtml).join(' · ')}</div>
+              ${renderTags(post.tags)}
+              <div class="post-header-actions">
+                <a href="editor.html?slug=${escapeHtml(slug)}" class="btn btn-ghost btn-sm">Edit</a>
+                <button onclick="deletePost()" class="btn btn-danger btn-sm">Delete</button>
+              </div>
+            </header>
+            <div class="post-content" id="post-content"></div>
+          </article>`;
+
+        // Render markdown safely (private blog — user is sole author)
+        document.getElementById('post-content').innerHTML = marked.parse(post.content || '');
+      } catch (err) {
+        document.getElementById('main').innerHTML = `<p style="color:var(--danger)">Error: ${escapeHtml(err.message)}</p>`;
+      }
+    }
+
+    async function deletePost() {
+      const title = document.querySelector('.post-header h1')?.textContent || slug;
+      if (!confirm(`Delete "${title}"?\n\nThis cannot be undone.`)) return;
+      try {
+        const res = await fetch(`/api/posts/${encodeURIComponent(slug)}`, { method: 'DELETE' });
+        if (!res.ok) throw new Error((await res.json()).error);
+        showToast('Post deleted', 'success');
+        setTimeout(() => location.href = 'index.html', 900);
+      } catch (err) {
+        showToast('Delete failed: ' + err.message, 'error');
+      }
+    }
+
+    function showToast(msg, type = '') {
+      const t = document.getElementById('toast');
+      t.textContent = msg;
+      t.className = 'toast' + (type ? ' ' + type : '') + ' show';
+      setTimeout(() => { t.className = 'toast'; }, 2800);
+    }
+
+    loadPost();
+  </script>
+</body>
+</html>

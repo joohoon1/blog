@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>New Post — Joohoon's Reflections</title>
+  <link rel="stylesheet" href="style.css">
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+</head>
+<body>
+  <div class="container">
+    <a href="index.html" class="back-link">← All posts</a>
+
+    <header style="margin-bottom:1.5rem;padding-bottom:1rem;border-bottom:1px solid var(--border)">
+      <span class="blog-title" id="page-title">New Post</span>
+    </header>
+
+    <form id="editor-form" class="editor-layout" onsubmit="return false">
+      <div class="form-row">
+        <div class="form-group" style="flex:2">
+          <label for="title">Title</label>
+          <input type="text" id="title" class="form-control" placeholder="Post title…" autocomplete="off" required>
+        </div>
+        <div class="form-group" style="flex:1">
+          <label for="tags">Tags <span style="font-weight:400;text-transform:none;letter-spacing:0">(comma separated)</span></label>
+          <input type="text" id="tags" class="form-control" placeholder="e.g. personal, ideas">
+        </div>
+      </div>
+
+      <div>
+        <div class="pane-header" style="margin-bottom:0.4rem">
+          <span class="pane-label">Content</span>
+          <div style="display:flex;align-items:center;gap:0.75rem">
+            <span style="font-size:0.72rem;color:var(--text-muted)">Markdown supported</span>
+            <button type="button" id="toggle-preview" class="btn btn-ghost btn-sm">Hide Preview</button>
+          </div>
+        </div>
+        <div class="editor-split">
+          <div class="editor-pane">
+            <div class="pane-header">
+              <div class="toolbar" id="toolbar">
+                <button type="button" class="tb-btn" title="Bold" data-action="bold"><b>B</b></button>
+                <button type="button" class="tb-btn" title="Italic" data-action="italic"><i>I</i></button>
+                <button type="button" class="tb-btn" title="Strikethrough" data-action="strike"><s>S</s></button>
+                <div class="tb-sep"></div>
+                <button type="button" class="tb-btn" title="Heading 1" data-action="h1">H1</button>
+                <button type="button" class="tb-btn" title="Heading 2" data-action="h2">H2</button>
+                <button type="button" class="tb-btn" title="Heading 3" data-action="h3">H3</button>
+                <div class="tb-sep"></div>
+                <button type="button" class="tb-btn" title="Blockquote" data-action="quote">"</button>
+                <button type="button" class="tb-btn" title="Inline code" data-action="code">`</button>
+                <button type="button" class="tb-btn" title="Code block" data-action="codeblock">```</button>
+                <div class="tb-sep"></div>
+                <button type="button" class="tb-btn" title="Unordered list" data-action="ul">• List</button>
+                <button type="button" class="tb-btn" title="Ordered list" data-action="ol">1. List</button>
+                <div class="tb-sep"></div>
+                <button type="button" class="tb-btn" title="Link" data-action="link">Link</button>
+                <button type="button" class="tb-btn" title="Horizontal rule" data-action="hr">—</button>
+              </div>
+            </div>
+            <textarea
+              id="editor"
+              class="editor-textarea"
+              placeholder="Write your post in Markdown…"
+              spellcheck="true"
+            ></textarea>
+          </div>
+
+          <div class="preview-pane" id="preview-pane">
+            <div class="pane-header">
+              <span class="pane-label">Preview</span>
+            </div>
+            <div class="preview-box" id="preview">
+              <span class="preview-empty">Preview will appear here…</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="form-actions">
+        <button type="submit" class="btn btn-primary" id="save-btn">Save Post</button>
+        <a href="index.html" class="btn btn-ghost">Cancel</a>
+        <span class="save-status" id="save-status"></span>
+      </div>
+    </form>
+  </div>
+
+  <div class="toast" id="toast"></div>
+
+  <script>
+    const slug = new URLSearchParams(location.search).get('slug');
+    const isEdit = !!slug;
+
+    const titleInput = document.getElementById('title');
+    const tagsInput = document.getElementById('tags');
+    const editor = document.getElementById('editor');
+    const preview = document.getElementById('preview');
+    const saveBtn = document.getElementById('save-btn');
+    const saveStatus = document.getElementById('save-status');
+
+    marked.setOptions({ breaks: true, gfm: true });
+
+    // ── Load existing post for editing ──
+    if (isEdit) {
+      document.getElementById('page-title').textContent = 'Edit Post';
+      document.title = 'Edit Post — Joohoon\'s Reflections';
+      saveBtn.textContent = 'Update Post';
+
+      fetch(`/api/posts/${encodeURIComponent(slug)}`)
+        .then(r => r.json())
+        .then(post => {
+          titleInput.value = post.title || '';
+          tagsInput.value = post.tags || '';
+          editor.value = post.content || '';
+          updatePreview();
+        })
+        .catch(err => showToast('Failed to load post: ' + err.message, 'error'));
+    }
+
+    // ── Live preview ──
+    function updatePreview() {
+      const md = editor.value.trim();
+      if (!md) {
+        preview.innerHTML = '<span class="preview-empty">Preview will appear here…</span>';
+        return;
+      }
+      preview.innerHTML = marked.parse(md);
+    }
+
+    editor.addEventListener('input', updatePreview);
+
+    // ── Toolbar actions ──
+    function wrapSelection(before, after = '') {
+      const start = editor.selectionStart;
+      const end = editor.selectionEnd;
+      const selected = editor.value.substring(start, end);
+      const replacement = before + selected + after;
+      editor.value = editor.value.substring(0, start) + replacement + editor.value.substring(end);
+      editor.selectionStart = start + before.length;
+      editor.selectionEnd = start + before.length + selected.length;
+      editor.focus();
+      editor.dispatchEvent(new Event('input'));
+    }
+
+    function prependLine(prefix) {
+      const start = editor.selectionStart;
+      const lineStart = editor.value.lastIndexOf('\n', start - 1) + 1;
+      const lineEnd = editor.value.indexOf('\n', start);
+      const end = lineEnd === -1 ? editor.value.length : lineEnd;
+      const line = editor.value.substring(lineStart, end);
+      editor.value = editor.value.substring(0, lineStart) + prefix + line + editor.value.substring(end);
+      editor.selectionStart = editor.selectionEnd = lineStart + prefix.length + (start - lineStart);
+      editor.focus();
+      editor.dispatchEvent(new Event('input'));
+    }
+
+    document.getElementById('toolbar').addEventListener('click', e => {
+      const btn = e.target.closest('.tb-btn');
+      if (!btn) return;
+      const action = btn.dataset.action;
+      switch (action) {
+        case 'bold':      wrapSelection('**', '**'); break;
+        case 'italic':    wrapSelection('*', '*'); break;
+        case 'strike':    wrapSelection('~~', '~~'); break;
+        case 'h1':        prependLine('# '); break;
+        case 'h2':        prependLine('## '); break;
+        case 'h3':        prependLine('### '); break;
+        case 'quote':     prependLine('> '); break;
+        case 'code':      wrapSelection('`', '`'); break;
+        case 'codeblock': wrapSelection('\n```\n', '\n```\n'); break;
+        case 'ul':        prependLine('- '); break;
+        case 'ol':        prependLine('1. '); break;
+        case 'link': {
+          const sel = editor.value.substring(editor.selectionStart, editor.selectionEnd);
+          wrapSelection('[' + (sel || 'text'), '](url)');
+          break;
+        }
+        case 'hr':
+          wrapSelection('\n\n---\n\n');
+          break;
+      }
+    });
+
+    // ── Tab key support in textarea ──
+    editor.addEventListener('keydown', e => {
+      if (e.key === 'Tab') {
+        e.preventDefault();
+        const start = editor.selectionStart;
+        const end = editor.selectionEnd;
+        editor.value = editor.value.substring(0, start) + '  ' + editor.value.substring(end);
+        editor.selectionStart = editor.selectionEnd = start + 2;
+        editor.dispatchEvent(new Event('input'));
+      }
+    });
+
+    // ── Save ──
+    document.getElementById('editor-form').addEventListener('submit', savePost);
+    saveBtn.addEventListener('click', savePost);
+
+    async function savePost() {
+      const title = titleInput.value.trim();
+      if (!title) {
+        titleInput.focus();
+        showToast('Please enter a title', 'error');
+        return;
+      }
+
+      saveBtn.disabled = true;
+      saveBtn.textContent = isEdit ? 'Saving…' : 'Publishing…';
+      saveStatus.textContent = '';
+
+      const body = {
+        title,
+        tags: tagsInput.value.trim(),
+        content: editor.value,
+      };
+
+      try {
+        const url = isEdit ? `/api/posts/${encodeURIComponent(slug)}` : '/api/posts';
+        const method = isEdit ? 'PUT' : 'POST';
+        const res = await fetch(url, {
+          method,
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        });
+
+        if (!res.ok) {
+          const { error } = await res.json();
+          throw new Error(error);
+        }
+
+        const saved = await res.json();
+        showToast(isEdit ? 'Post updated!' : 'Post published!', 'success');
+        setTimeout(() => {
+          location.href = `post.html?slug=${encodeURIComponent(saved.slug || slug)}`;
+        }, 700);
+      } catch (err) {
+        saveBtn.disabled = false;
+        saveBtn.textContent = isEdit ? 'Update Post' : 'Save Post';
+        showToast('Save failed: ' + err.message, 'error');
+      }
+    }
+
+    function showToast(msg, type = '') {
+      const t = document.getElementById('toast');
+      t.textContent = msg;
+      t.className = 'toast' + (type ? ' ' + type : '') + ' show';
+      setTimeout(() => { t.className = 'toast'; }, 2800);
+    }
+
+    // ── Preview toggle ──
+    const previewPane = document.getElementById('preview-pane');
+    const toggleBtn = document.getElementById('toggle-preview');
+    const editorSplit = document.querySelector('.editor-split');
+    let previewVisible = false;
+    previewPane.style.display = 'none';
+    editorSplit.style.gridTemplateColumns = '1fr';
+    toggleBtn.textContent = 'Show Preview';
+
+    toggleBtn.addEventListener('click', () => {
+      previewVisible = !previewVisible;
+      previewPane.style.display = previewVisible ? '' : 'none';
+      editorSplit.style.gridTemplateColumns = previewVisible ? '1fr 1fr' : '1fr';
+      toggleBtn.textContent = previewVisible ? 'Hide Preview' : 'Show Preview';
+    });
+
+    // Focus title on load
+    if (!isEdit) titleInput.focus();
+  </script>
+</body>
+</html>

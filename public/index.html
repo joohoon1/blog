@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Joohoon's Reflections</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="container">
+    <header>
+      <span class="blog-title">Joohoon's Reflections</span>
+      <div class="header-actions">
+        <a href="editor.html" class="btn btn-primary">+ New Post</a>
+      </div>
+    </header>
+
+    <main id="main">
+      <div id="posts-list"></div>
+    </main>
+  </div>
+
+  <div class="toast" id="toast"></div>
+
+  <script>
+    const postsList = document.getElementById('posts-list');
+
+    function formatDate(iso) {
+      return new Date(iso).toLocaleDateString('en-US', {
+        year: 'numeric', month: 'long', day: 'numeric'
+      });
+    }
+
+    function renderTags(tags) {
+      if (!tags || !tags.trim()) return '';
+      return `<div class="tags">${tags.split(',').map(t => `<span class="tag">${t.trim()}</span>`).join('')}</div>`;
+    }
+
+    function escapeHtml(str) {
+      return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+    }
+
+    async function loadPosts() {
+      postsList.innerHTML = '<p style="color:var(--text-muted);padding:2rem 0">Loading…</p>';
+      try {
+        const res = await fetch('/api/posts');
+        const posts = await res.json();
+
+        if (posts.length === 0) {
+          postsList.innerHTML = `
+            <div class="empty-state">
+              <p>No posts yet.</p>
+              <a href="editor.html" class="btn btn-primary">Write your first post</a>
+            </div>`;
+          return;
+        }
+
+        postsList.innerHTML = `<div class="posts-list">${posts.map(p => `
+          <article class="post-card">
+            <div class="post-card-meta">${formatDate(p.date)}${p.updated ? ' · edited' : ''}</div>
+            <h2 class="post-card-title"><a href="post.html?slug=${escapeHtml(p.slug)}">${escapeHtml(p.title)}</a></h2>
+            ${renderTags(p.tags)}
+            <div class="post-card-actions">
+              <a href="post.html?slug=${escapeHtml(p.slug)}" class="btn btn-ghost btn-sm">Read</a>
+              <a href="editor.html?slug=${escapeHtml(p.slug)}" class="btn btn-ghost btn-sm">Edit</a>
+              <button onclick="deletePost('${escapeHtml(p.slug)}', ${JSON.stringify(escapeHtml(p.title))})" class="btn btn-danger btn-sm">Delete</button>
+            </div>
+          </article>`).join('')}</div>`;
+      } catch (err) {
+        postsList.innerHTML = `<p style="color:var(--danger)">Failed to load posts: ${err.message}</p>`;
+      }
+    }
+
+    async function deletePost(slug, title) {
+      if (!confirm(`Delete "${title}"?\n\nThis cannot be undone.`)) return;
+      try {
+        const res = await fetch(`/api/posts/${slug}`, { method: 'DELETE' });
+        if (!res.ok) throw new Error((await res.json()).error);
+        showToast('Post deleted', 'success');
+        loadPosts();
+      } catch (err) {
+        showToast('Delete failed: ' + err.message, 'error');
+      }
+    }
+
+    function showToast(msg, type = '') {
+      const t = document.getElementById('toast');
+      t.textContent = msg;
+      t.className = 'toast' + (type ? ' ' + type : '') + ' show';
+      setTimeout(() => { t.className = 'toast'; }, 2800);
+    }
+
+    loadPosts();
+  </script>
+</body>
+</html>
