@@ -20,10 +20,7 @@
   <script>
     const slug = new URLSearchParams(location.search).get('slug');
 
-    marked.setOptions({
-      breaks: true,
-      gfm: true,
-    });
+    marked.setOptions({ breaks: true, gfm: true });
 
     function formatDate(iso) {
       return new Date(iso).toLocaleDateString('en-US', {

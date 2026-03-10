@@ -16,7 +16,7 @@ if (!fs.existsSync(DRAFTS_DIR)) {
   fs.mkdirSync(DRAFTS_DIR, { recursive: true });
 }
 
-app.use(express.json());
+app.use(express.json({ limit: '20mb' }));
 app.use(express.static(path.join(__dirname, 'public')));
 
 // Only allow safe slug characters to prevent path traversal
@@ -85,7 +85,16 @@ app.post('/api/posts', (req, res) => {
   try {
     const slug = getUniqueSlug(title);
     const date = new Date().toISOString();
-    const fileContent = matter.stringify(content, { title: title.trim(), date, tags });
+
+    // Move draft-new uploads to the post's permanent slug directory and fix URLs
+    let finalContent = content;
+    const draftUploadsDir = path.join(__dirname, 'public', 'uploads', 'draft-new');
+    if (fs.existsSync(draftUploadsDir)) {
+      fs.renameSync(draftUploadsDir, path.join(__dirname, 'public', 'uploads', slug));
+      finalContent = content.replace(/\/uploads\/draft-new\//g, `/uploads/${slug}/`);
+    }
+
+    const fileContent = matter.stringify(finalContent, { title: title.trim(), date, tags });
     fs.writeFileSync(path.join(POSTS_DIR, `${slug}.md`), fileContent);
     res.status(201).json({ slug, title, date, tags });
   } catch (err) {
@@ -124,7 +133,64 @@ app.delete('/api/posts/:slug', (req, res) => {
   if (!fs.existsSync(filePath)) return res.status(404).json({ error: 'Post not found' });
   try {
     fs.unlinkSync(filePath);
+    const uploadsDir = path.join(__dirname, 'public', 'uploads', slug);
+    if (fs.existsSync(uploadsDir)) fs.rmSync(uploadsDir, { recursive: true });
     res.json({ message: 'Post deleted' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/uploads/:postId — list images for a specific post
+app.get('/api/uploads/:postId', (req, res) => {
+  const { postId } = req.params;
+  if (!isValidSlug(postId)) return res.status(400).json({ error: 'Invalid post ID' });
+  const uploadsDir = path.join(__dirname, 'public', 'uploads', postId);
+  if (!fs.existsSync(uploadsDir)) return res.json([]);
+  try {
+    const files = fs.readdirSync(uploadsDir)
+      .filter(f => /\.(jpg|jpeg|png|gif|webp|svg)$/i.test(f))
+      .map(f => ({ name: f, url: `/uploads/${postId}/${f}` }))
+      .reverse();
+    res.json(files);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// DELETE /api/uploads/:postId/:filename — delete an image
+app.delete('/api/uploads/:postId/:filename', (req, res) => {
+  const { postId, filename } = req.params;
+  if (!isValidSlug(postId)) return res.status(400).json({ error: 'Invalid post ID' });
+  if (!/^[a-z0-9][a-z0-9._-]*\.[a-z0-9]+$/.test(filename)) return res.status(400).json({ error: 'Invalid filename' });
+  const filePath = path.join(__dirname, 'public', 'uploads', postId, filename);
+  if (!fs.existsSync(filePath)) return res.status(404).json({ error: 'File not found' });
+  try {
+    fs.unlinkSync(filePath);
+    res.json({ message: 'File deleted' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/upload — upload an image (base64 JSON body)
+app.post('/api/upload', (req, res) => {
+  const { name, type, data, postId } = req.body;
+  const ALLOWED = ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/svg+xml'];
+  if (!ALLOWED.includes(type)) return res.status(400).json({ error: 'Unsupported file type' });
+  if (!data) return res.status(400).json({ error: 'No file data' });
+  if (!postId || !isValidSlug(postId)) return res.status(400).json({ error: 'Invalid post ID' });
+  try {
+    const buffer = Buffer.from(data, 'base64');
+    if (buffer.length > 10 * 1024 * 1024) return res.status(400).json({ error: 'File too large (max 10MB)' });
+    const ext = path.extname(name).toLowerCase();
+    if (!/^\.[a-z0-9]+$/.test(ext)) return res.status(400).json({ error: 'Invalid file extension' });
+    const base = path.basename(name, ext).toLowerCase().replace(/[^a-z0-9]/g, '-').substring(0, 40);
+    const filename = `${Date.now()}-${base}${ext}`;
+    const uploadsDir = path.join(__dirname, 'public', 'uploads', postId);
+    if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
+    fs.writeFileSync(path.join(uploadsDir, filename), buffer);
+    res.json({ url: `/uploads/${postId}/${filename}` });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -181,6 +247,11 @@ app.delete('/api/drafts/:id', (req, res) => {
   if (!fs.existsSync(filePath)) return res.status(404).json({ error: 'Draft not found' });
   try {
     fs.unlinkSync(filePath);
+    // Only delete uploads for new-post drafts; edit drafts share the post's upload folder
+    if (id === 'draft-new') {
+      const uploadsDir = path.join(__dirname, 'public', 'uploads', 'draft-new');
+      if (fs.existsSync(uploadsDir)) fs.rmSync(uploadsDir, { recursive: true });
+    }
     res.json({ message: 'Draft deleted' });
   } catch (err) {
     res.status(500).json({ error: err.message });

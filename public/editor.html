@@ -35,6 +35,14 @@
             <button type="button" id="toggle-preview" class="btn btn-ghost btn-sm">Hide Preview</button>
           </div>
         </div>
+        <div id="image-manager" style="display:none;margin-bottom:0.5rem">
+          <div class="image-manager-header">
+            <span class="pane-label">Uploaded Images</span>
+            <button type="button" id="image-manager-close" class="btn btn-ghost btn-sm">Close</button>
+          </div>
+          <div class="image-grid" id="image-grid"></div>
+        </div>
+
         <div class="editor-split">
           <div class="editor-pane">
             <div class="pane-header">
@@ -56,6 +64,9 @@
                 <div class="tb-sep"></div>
                 <button type="button" class="tb-btn" title="Link" data-action="link">Link</button>
                 <button type="button" class="tb-btn" title="Horizontal rule" data-action="hr">—</button>
+                <div class="tb-sep"></div>
+                <button type="button" class="tb-btn" title="Upload image" data-action="image">Image</button>
+                <button type="button" class="tb-btn" title="Browse & manage images" data-action="browse">Browse</button>
               </div>
             </div>
             <textarea
@@ -102,6 +113,8 @@
 
     // ── Draft auto-save ──
     const DRAFT_ID = isEdit ? `edit-${slug}` : 'draft-new';
+    // Images are scoped to the post slug in edit mode, or 'draft-new' for new posts
+    const IMAGE_SCOPE = isEdit ? slug : 'draft-new';
     let draftTimer = null;
     let lastSavedSnapshot = null;
 
@@ -248,7 +261,7 @@
       editor.dispatchEvent(new Event('input'));
     }
 
-    document.getElementById('toolbar').addEventListener('click', e => {
+    document.getElementById('toolbar').addEventListener('click', async e => {
       const btn = e.target.closest('.tb-btn');
       if (!btn) return;
       const action = btn.dataset.action;
@@ -272,6 +285,123 @@
         case 'hr':
           wrapSelection('\n\n---\n\n');
           break;
+        case 'image':
+          await handleImageUpload();
+          break;
+        case 'browse':
+          await openImageManager();
+          break;
+      }
+    });
+
+    async function handleImageUpload() {
+      const input = document.createElement('input');
+      input.type = 'file';
+      input.accept = 'image/*,.svg';
+      input.click();
+      await new Promise(resolve => { input.onchange = resolve; });
+      const file = input.files[0];
+      if (!file) return;
+      await uploadAndInsertImage(file);
+    }
+
+    async function uploadAndInsertImage(file) {
+      showToast('Uploading…');
+      try {
+        const data = await new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(reader.result.split(',')[1]);
+          reader.onerror = reject;
+          reader.readAsDataURL(file);
+        });
+        const res = await fetch('/api/upload', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name: file.name, type: file.type, data, postId: IMAGE_SCOPE }),
+        });
+        if (!res.ok) throw new Error((await res.json()).error);
+        const { url } = await res.json();
+        const alt = file.name.replace(/\.[^.]+$/, '');
+        wrapSelection(`![${alt}](${url})`);
+        showToast('Image inserted', 'success');
+        if (imageManager.style.display !== 'none') openImageManager();
+      } catch (e) {
+        showToast('Upload failed: ' + e.message, 'error');
+      }
+    }
+
+    // ── Image manager ──
+    const imageManager = document.getElementById('image-manager');
+    const imageGrid = document.getElementById('image-grid');
+
+    async function openImageManager() {
+      imageManager.style.display = '';
+      imageGrid.innerHTML = '<span style="color:var(--text-muted);font-size:0.85rem">Loading…</span>';
+      try {
+        const res = await fetch(`/api/uploads/${IMAGE_SCOPE}`);
+        const images = await res.json();
+        if (!images.length) {
+          imageGrid.innerHTML = '<span style="color:var(--text-muted);font-size:0.85rem">No images uploaded yet.</span>';
+          return;
+        }
+        imageGrid.innerHTML = images.map(img => `
+          <div class="image-thumb" data-url="${img.url}" data-name="${img.name}">
+            <span class="image-thumb-name">${img.name}</span>
+            <button type="button" class="image-thumb-delete" title="Delete image" data-name="${img.name}">×</button>
+          </div>`).join('');
+      } catch (e) {
+        imageGrid.innerHTML = '<span style="color:var(--danger);font-size:0.85rem">Failed to load images.</span>';
+      }
+    }
+
+    imageGrid.addEventListener('click', async e => {
+      const deleteBtn = e.target.closest('.image-thumb-delete');
+      const thumb = e.target.closest('.image-thumb');
+
+      if (deleteBtn) {
+        const name = deleteBtn.dataset.name;
+        if (!confirm(`Delete "${name}"?`)) return;
+        try {
+          const res = await fetch(`/api/uploads/${IMAGE_SCOPE}/${encodeURIComponent(name)}`, { method: 'DELETE' });
+          if (!res.ok) throw new Error((await res.json()).error);
+          deleteBtn.closest('.image-thumb').remove();
+          if (!imageGrid.querySelector('.image-thumb')) {
+            imageGrid.innerHTML = '<span style="color:var(--text-muted);font-size:0.85rem">No images uploaded yet.</span>';
+          }
+        } catch (err) {
+          showToast('Delete failed: ' + err.message, 'error');
+        }
+      } else if (thumb) {
+        const url = thumb.dataset.url;
+        const alt = thumb.dataset.name.replace(/\.[^.]+$/, '');
+        wrapSelection(`![${alt}](${url})`);
+        imageManager.style.display = 'none';
+      }
+    });
+
+    document.getElementById('image-manager-close').addEventListener('click', () => {
+      imageManager.style.display = 'none';
+    });
+
+    // ── Drag-and-drop image upload ──
+    editor.addEventListener('dragover', e => {
+      if (e.dataTransfer.types.includes('Files')) {
+        e.preventDefault();
+        editor.classList.add('drag-over');
+      }
+    });
+
+    editor.addEventListener('dragleave', () => {
+      editor.classList.remove('drag-over');
+    });
+
+    editor.addEventListener('drop', async e => {
+      const files = Array.from(e.dataTransfer.files).filter(f => f.type.startsWith('image/'));
+      if (!files.length) return;
+      e.preventDefault();
+      editor.classList.remove('drag-over');
+      for (const file of files) {
+        await uploadAndInsertImage(file);
       }
     });
 

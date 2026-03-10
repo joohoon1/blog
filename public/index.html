@@ -68,7 +68,7 @@
             <div class="post-card-actions">
               <a href="post.html?slug=${escapeHtml(p.slug)}" class="btn btn-ghost btn-sm">Read</a>
               <a href="editor.html?slug=${escapeHtml(p.slug)}" class="btn btn-ghost btn-sm">Edit</a>
-              <button onclick="deletePost('${escapeHtml(p.slug)}', ${JSON.stringify(escapeHtml(p.title))})" class="btn btn-danger btn-sm">Delete</button>
+              <button onclick="deletePost(this.dataset.slug, this.dataset.title)" data-slug="${escapeHtml(p.slug)}" data-title="${escapeHtml(p.title)}" class="btn btn-danger btn-sm">Delete</button>
             </div>
           </article>`).join('')}</div>`;
       } catch (err) {
@@ -100,7 +100,7 @@
       try {
         const res = await fetch('/api/drafts');
         const drafts = await res.json();
-        if (!drafts.length) return;
+        if (!drafts.length) { section.innerHTML = ''; return; }
         section.innerHTML = `
           <div style="margin-bottom:2rem">
             <h3 style="font-size:0.78rem;font-weight:600;text-transform:uppercase;letter-spacing:0.08em;color:var(--text-muted);margin-bottom:0.75rem">Drafts</h3>
