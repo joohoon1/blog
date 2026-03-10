@@ -16,6 +16,7 @@
     </header>
 
     <main id="main">
+      <div id="drafts-section"></div>
       <div id="posts-list"></div>
     </main>
   </div>
@@ -94,6 +95,44 @@
       setTimeout(() => { t.className = 'toast'; }, 2800);
     }
 
+    async function loadDrafts() {
+      const section = document.getElementById('drafts-section');
+      try {
+        const res = await fetch('/api/drafts');
+        const drafts = await res.json();
+        if (!drafts.length) return;
+        section.innerHTML = `
+          <div style="margin-bottom:2rem">
+            <h3 style="font-size:0.78rem;font-weight:600;text-transform:uppercase;letter-spacing:0.08em;color:var(--text-muted);margin-bottom:0.75rem">Drafts</h3>
+            <div class="posts-list">${drafts.map(d => {
+              const editUrl = d.id.startsWith('edit-')
+                ? `editor.html?slug=${escapeHtml(d.id.slice(5))}`
+                : 'editor.html';
+              return `
+              <article class="post-card" style="opacity:0.8">
+                <div class="post-card-meta">Last saved ${new Date(d.savedAt).toLocaleString()}</div>
+                <h2 class="post-card-title"><a href="${editUrl}">${escapeHtml(d.title || 'Untitled')}</a></h2>
+                <div class="post-card-actions">
+                  <a href="${editUrl}" class="btn btn-ghost btn-sm">Continue writing</a>
+                  <button onclick="deleteDraft('${escapeHtml(d.id)}')" class="btn btn-danger btn-sm">Discard</button>
+                </div>
+              </article>`;
+            }).join('')}</div>
+          </div>`;
+      } catch (e) {}
+    }
+
+    async function deleteDraft(id) {
+      if (!confirm('Discard this draft?')) return;
+      try {
+        await fetch(`/api/drafts/${id}`, { method: 'DELETE' });
+        loadDrafts();
+      } catch (err) {
+        showToast('Failed to discard draft: ' + err.message, 'error');
+      }
+    }
+
+    loadDrafts();
     loadPosts();
   </script>
 </body>

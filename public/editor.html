@@ -80,6 +80,7 @@
       <div class="form-actions">
         <button type="submit" class="btn btn-primary" id="save-btn">Save Post</button>
         <a href="index.html" class="btn btn-ghost">Cancel</a>
+        <button type="button" class="btn btn-ghost btn-sm" id="discard-btn" style="display:none;color:var(--danger)">Discard draft</button>
         <span class="save-status" id="save-status"></span>
       </div>
     </form>
@@ -97,6 +98,97 @@
     const preview = document.getElementById('preview');
     const saveBtn = document.getElementById('save-btn');
     const saveStatus = document.getElementById('save-status');
+    const discardBtn = document.getElementById('discard-btn');
+
+    // ── Draft auto-save ──
+    const DRAFT_ID = isEdit ? `edit-${slug}` : 'draft-new';
+    let draftTimer = null;
+    let lastSavedSnapshot = null;
+
+    function draftSnapshot() {
+      return JSON.stringify({ title: titleInput.value, tags: tagsInput.value, content: editor.value });
+    }
+
+    function scheduleDraftSave() {
+      clearTimeout(draftTimer);
+      draftTimer = setTimeout(saveDraft, 3000);
+    }
+
+    async function saveDraft() {
+      const snapshot = draftSnapshot();
+      if (snapshot === lastSavedSnapshot) return;
+      try {
+        await fetch(`/api/drafts/${DRAFT_ID}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: snapshot,
+        });
+        lastSavedSnapshot = snapshot;
+        saveStatus.textContent = 'Draft saved · just now';
+        discardBtn.style.display = '';
+      } catch (e) {
+        saveStatus.textContent = 'Draft save failed';
+      }
+    }
+
+    async function deleteDraft() {
+      try { await fetch(`/api/drafts/${DRAFT_ID}`, { method: 'DELETE' }); } catch (e) {}
+    }
+
+    async function loadDraft() {
+      try {
+        const res = await fetch(`/api/drafts/${DRAFT_ID}`);
+        if (!res.ok) return;
+        const draft = await res.json();
+        if (!isEdit) {
+          titleInput.value = draft.title || '';
+          tagsInput.value = draft.tags || '';
+          editor.value = draft.content || '';
+          updatePreview();
+          lastSavedSnapshot = draftSnapshot();
+          saveStatus.textContent = 'Draft restored';
+          discardBtn.style.display = '';
+        } else {
+          // For edit mode, offer to restore if draft differs from loaded post
+          const postSnapshot = draftSnapshot();
+          const draftSnap = JSON.stringify({ title: draft.title, tags: draft.tags, content: draft.content });
+          if (draftSnap !== postSnapshot) {
+            saveStatus.textContent = `Unsaved draft from ${new Date(draft.savedAt).toLocaleString()} — `;
+            const restoreLink = document.createElement('a');
+            restoreLink.href = '#';
+            restoreLink.textContent = 'restore?';
+            restoreLink.style.cssText = 'color:inherit;text-decoration:underline';
+            restoreLink.onclick = e => {
+              e.preventDefault();
+              titleInput.value = draft.title || '';
+              tagsInput.value = draft.tags || '';
+              editor.value = draft.content || '';
+              updatePreview();
+              lastSavedSnapshot = draftSnapshot();
+              saveStatus.textContent = 'Draft restored';
+              discardBtn.style.display = '';
+            };
+            saveStatus.appendChild(restoreLink);
+            discardBtn.style.display = '';
+          }
+        }
+      } catch (e) {}
+    }
+
+    discardBtn.addEventListener('click', async () => {
+      if (!confirm('Discard this draft?')) return;
+      await deleteDraft();
+      lastSavedSnapshot = null;
+      discardBtn.style.display = 'none';
+      if (!isEdit) {
+        titleInput.value = '';
+        tagsInput.value = '';
+        editor.value = '';
+        updatePreview();
+        titleInput.focus();
+      }
+      saveStatus.textContent = 'Draft discarded';
+    });
 
     marked.setOptions({ breaks: true, gfm: true });
 
@@ -127,7 +219,9 @@
       preview.innerHTML = marked.parse(md);
     }
 
-    editor.addEventListener('input', updatePreview);
+    editor.addEventListener('input', () => { updatePreview(); scheduleDraftSave(); });
+    titleInput.addEventListener('input', scheduleDraftSave);
+    tagsInput.addEventListener('input', scheduleDraftSave);
 
     // ── Toolbar actions ──
     function wrapSelection(before, after = '') {
@@ -231,6 +325,7 @@
 
         const saved = await res.json();
         showToast(isEdit ? 'Post updated!' : 'Post published!', 'success');
+        deleteDraft();
         setTimeout(() => {
           location.href = `post.html?slug=${encodeURIComponent(saved.slug || slug)}`;
         }, 700);
@@ -264,8 +359,10 @@
       toggleBtn.textContent = previewVisible ? 'Hide Preview' : 'Show Preview';
     });
 
-    // Focus title on load
-    if (!isEdit) titleInput.focus();
+    // Load draft, then focus title for new posts if no draft was restored
+    loadDraft().then(() => {
+      if (!isEdit && !titleInput.value) titleInput.focus();
+    });
   </script>
 </body>
 </html>

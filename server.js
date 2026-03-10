@@ -11,6 +11,11 @@ if (!fs.existsSync(POSTS_DIR)) {
   fs.mkdirSync(POSTS_DIR, { recursive: true });
 }
 
+const DRAFTS_DIR = path.join(__dirname, 'drafts');
+if (!fs.existsSync(DRAFTS_DIR)) {
+  fs.mkdirSync(DRAFTS_DIR, { recursive: true });
+}
+
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
@@ -120,6 +125,63 @@ app.delete('/api/posts/:slug', (req, res) => {
   try {
     fs.unlinkSync(filePath);
     res.json({ message: 'Post deleted' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/drafts — list all drafts
+app.get('/api/drafts', (req, res) => {
+  try {
+    const files = fs.readdirSync(DRAFTS_DIR).filter(f => f.endsWith('.json'));
+    const drafts = files.map(file => {
+      const data = JSON.parse(fs.readFileSync(path.join(DRAFTS_DIR, file), 'utf-8'));
+      return { id: path.basename(file, '.json'), ...data };
+    });
+    drafts.sort((a, b) => new Date(b.savedAt) - new Date(a.savedAt));
+    res.json(drafts);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/drafts/:id — get a draft
+app.get('/api/drafts/:id', (req, res) => {
+  const { id } = req.params;
+  if (!isValidSlug(id)) return res.status(400).json({ error: 'Invalid draft id' });
+  const filePath = path.join(DRAFTS_DIR, `${id}.json`);
+  if (!fs.existsSync(filePath)) return res.status(404).json({ error: 'Draft not found' });
+  try {
+    const data = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
+    res.json({ id, ...data });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// PUT /api/drafts/:id — save or update a draft
+app.put('/api/drafts/:id', (req, res) => {
+  const { id } = req.params;
+  if (!isValidSlug(id)) return res.status(400).json({ error: 'Invalid draft id' });
+  try {
+    const { title = '', content = '', tags = '' } = req.body;
+    const draft = { title, content, tags, savedAt: new Date().toISOString() };
+    fs.writeFileSync(path.join(DRAFTS_DIR, `${id}.json`), JSON.stringify(draft, null, 2));
+    res.json({ id, ...draft });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// DELETE /api/drafts/:id — delete a draft
+app.delete('/api/drafts/:id', (req, res) => {
+  const { id } = req.params;
+  if (!isValidSlug(id)) return res.status(400).json({ error: 'Invalid draft id' });
+  const filePath = path.join(DRAFTS_DIR, `${id}.json`);
+  if (!fs.existsSync(filePath)) return res.status(404).json({ error: 'Draft not found' });
+  try {
+    fs.unlinkSync(filePath);
+    res.json({ message: 'Draft deleted' });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
