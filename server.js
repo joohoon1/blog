@@ -80,18 +80,20 @@ app.get('/api/posts/:slug', (req, res) => {
 
 // POST /api/posts — create post
 app.post('/api/posts', (req, res) => {
-  const { title, content = '', tags = '' } = req.body;
+  const { title, content = '', tags = '', draftId } = req.body;
   if (!title || !title.trim()) return res.status(400).json({ error: 'Title is required' });
   try {
     const slug = getUniqueSlug(title);
     const date = new Date().toISOString();
 
-    // Move draft-new uploads to the post's permanent slug directory and fix URLs
+    // Move draft uploads to the post's permanent slug directory and fix URLs
     let finalContent = content;
-    const draftUploadsDir = path.join(__dirname, 'public', 'uploads', 'draft-new');
-    if (fs.existsSync(draftUploadsDir)) {
-      fs.renameSync(draftUploadsDir, path.join(__dirname, 'public', 'uploads', slug));
-      finalContent = content.replace(/\/uploads\/draft-new\//g, `/uploads/${slug}/`);
+    if (draftId && isValidSlug(draftId)) {
+      const draftUploadsDir = path.join(__dirname, 'public', 'uploads', draftId);
+      if (fs.existsSync(draftUploadsDir)) {
+        fs.renameSync(draftUploadsDir, path.join(__dirname, 'public', 'uploads', slug));
+        finalContent = content.replace(new RegExp(`/uploads/${draftId}/`, 'g'), `/uploads/${slug}/`);
+      }
     }
 
     const fileContent = matter.stringify(finalContent, { title: title.trim(), date, tags });
@@ -248,8 +250,8 @@ app.delete('/api/drafts/:id', (req, res) => {
   try {
     fs.unlinkSync(filePath);
     // Only delete uploads for new-post drafts; edit drafts share the post's upload folder
-    if (id === 'draft-new') {
-      const uploadsDir = path.join(__dirname, 'public', 'uploads', 'draft-new');
+    if (!id.startsWith('edit-')) {
+      const uploadsDir = path.join(__dirname, 'public', 'uploads', id);
       if (fs.existsSync(uploadsDir)) fs.rmSync(uploadsDir, { recursive: true });
     }
     res.json({ message: 'Draft deleted' });

@@ -3,15 +3,15 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Joohoon's Reflections</title>
+  <title>Joohoon's Blog</title>
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
   <div class="container">
     <header>
-      <span class="blog-title">Joohoon's Reflections</span>
+      <span class="blog-title">Joohoon's Blog</span>
       <div class="header-actions">
-        <a href="editor.html" class="btn btn-primary">+ New Post</a>
+        <button onclick="newPost()" class="btn btn-primary">+ New Post</button>
       </div>
     </header>
 
@@ -55,7 +55,7 @@
           postsList.innerHTML = `
             <div class="empty-state">
               <p>No posts yet.</p>
-              <a href="editor.html" class="btn btn-primary">Write your first post</a>
+              <button onclick="newPost()" class="btn btn-primary">Write your first post</button>
             </div>`;
           return;
         }
@@ -107,7 +107,7 @@
             <div class="posts-list">${drafts.map(d => {
               const editUrl = d.id.startsWith('edit-')
                 ? `editor.html?slug=${escapeHtml(d.id.slice(5))}`
-                : 'editor.html';
+                : `editor.html?draft=${escapeHtml(d.id)}`;
               return `
               <article class="post-card" style="opacity:0.8">
                 <div class="post-card-meta">Last saved ${new Date(d.savedAt).toLocaleString()}</div>
@@ -130,6 +130,10 @@
       } catch (err) {
         showToast('Failed to discard draft: ' + err.message, 'error');
       }
+    }
+
+    function newPost() {
+      location.href = `editor.html?draft=draft-${Date.now()}`;
     }
 
     loadDrafts();

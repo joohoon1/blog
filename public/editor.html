@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>New Post — Joohoon's Reflections</title>
+  <title>New Post — Joohoon's Blog</title>
   <link rel="stylesheet" href="style.css">
   <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 </head>
@@ -89,7 +89,7 @@
       </div>
 
       <div class="form-actions">
-        <button type="submit" class="btn btn-primary" id="save-btn">Save Post</button>
+        <button type="submit" class="btn btn-primary" id="save-btn">Publish Post</button>
         <a href="index.html" class="btn btn-ghost">Cancel</a>
         <button type="button" class="btn btn-ghost btn-sm" id="discard-btn" style="display:none;color:var(--danger)">Discard draft</button>
         <span class="save-status" id="save-status"></span>
@@ -100,7 +100,9 @@
   <div class="toast" id="toast"></div>
 
   <script>
-    const slug = new URLSearchParams(location.search).get('slug');
+    const params = new URLSearchParams(location.search);
+    const slug = params.get('slug');
+    const draftParam = params.get('draft');
     const isEdit = !!slug;
 
     const titleInput = document.getElementById('title');
@@ -112,9 +114,9 @@
     const discardBtn = document.getElementById('discard-btn');
 
     // ── Draft auto-save ──
-    const DRAFT_ID = isEdit ? `edit-${slug}` : 'draft-new';
-    // Images are scoped to the post slug in edit mode, or 'draft-new' for new posts
-    const IMAGE_SCOPE = isEdit ? slug : 'draft-new';
+    const DRAFT_ID = isEdit ? `edit-${slug}` : (draftParam || `draft-${Date.now()}`);
+    // Images are scoped to the post slug in edit mode, or the draft ID for new posts
+    const IMAGE_SCOPE = isEdit ? slug : DRAFT_ID;
     let draftTimer = null;
     let lastSavedSnapshot = null;
 
@@ -208,7 +210,7 @@
     // ── Load existing post for editing ──
     if (isEdit) {
       document.getElementById('page-title').textContent = 'Edit Post';
-      document.title = 'Edit Post — Joohoon\'s Reflections';
+      document.title = 'Edit Post — Joohoon\'s Blog';
       saveBtn.textContent = 'Update Post';
 
       fetch(`/api/posts/${encodeURIComponent(slug)}`)
@@ -437,6 +439,7 @@
         title,
         tags: tagsInput.value.trim(),
         content: editor.value,
+        ...(!isEdit && { draftId: DRAFT_ID }),
       };
 
       try {
@@ -461,7 +464,7 @@
         }, 700);
       } catch (err) {
         saveBtn.disabled = false;
-        saveBtn.textContent = isEdit ? 'Update Post' : 'Save Post';
+        saveBtn.textContent = isEdit ? 'Update Post' : 'Publish Post';
         showToast('Save failed: ' + err.message, 'error');
       }
     }
