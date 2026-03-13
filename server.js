@@ -2,6 +2,7 @@ const express = require('express');
 const fs = require('fs');
 const path = require('path');
 const matter = require('gray-matter');
+const { execSync } = require('child_process');
 
 const app = express();
 const PORT = 3000;
@@ -98,6 +99,20 @@ app.post('/api/posts', (req, res) => {
 
     const fileContent = matter.stringify(finalContent, { title: title.trim(), date, tags });
     fs.writeFileSync(path.join(POSTS_DIR, `${slug}.md`), fileContent);
+
+    try {
+      const repoRoot = __dirname;
+      execSync(`git add posts/${slug}.md`, { cwd: repoRoot });
+      const uploadsDir = path.join(__dirname, 'public', 'uploads', slug);
+      if (fs.existsSync(uploadsDir)) {
+        execSync(`git add public/uploads/${slug}`, { cwd: repoRoot });
+      }
+      execSync(`git commit -m "Publish: ${title.trim().replace(/"/g, '\\"')}"`, { cwd: repoRoot });
+      execSync('git push origin main', { cwd: repoRoot });
+    } catch (gitErr) {
+      console.error('Git error:', gitErr.message);
+    }
+
     res.status(201).json({ slug, title, date, tags });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -121,6 +136,21 @@ app.put('/api/posts/:slug', (req, res) => {
     };
     const updatedContent = content !== undefined ? content : existing.content;
     fs.writeFileSync(filePath, matter.stringify(updatedContent, updatedData));
+
+    try {
+      const repoRoot = __dirname;
+      const postTitle = updatedData.title;
+      execSync(`git add posts/${slug}.md`, { cwd: repoRoot });
+      const uploadsDir = path.join(__dirname, 'public', 'uploads', slug);
+      if (fs.existsSync(uploadsDir)) {
+        execSync(`git add public/uploads/${slug}`, { cwd: repoRoot });
+      }
+      execSync(`git commit -m "Update: ${postTitle.replace(/"/g, '\\"')}"`, { cwd: repoRoot });
+      execSync('git push origin main', { cwd: repoRoot });
+    } catch (gitErr) {
+      console.error('Git error:', gitErr.message);
+    }
+
     res.json({ slug, ...updatedData });
   } catch (err) {
     res.status(500).json({ error: err.message });
