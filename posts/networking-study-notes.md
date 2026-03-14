@@ -1,8 +1,8 @@
 ---
-title: Networking Study Notes
+title: networking concepts
 date: '2026-03-13T16:44:11.139Z'
 tags: study
-updated: '2026-03-13T17:25:21.785Z'
+updated: '2026-03-14T04:33:29.069Z'
 ---
 For most web development, we're really only concerned with layer 3, 4 and 7 of the [OSI model](https://en.wikipedia.org/wiki/OSI_model).
 
